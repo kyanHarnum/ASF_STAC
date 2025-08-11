@@ -26,9 +26,11 @@ class DuckDBSettings(ApiSettings):
 
         arbitrary_types_allowed = True
 
+    
     @validator("conn", pre=True, always=True)
     def setup_connection(cls, v):
         """Set DuckDB connection, load spatial extension."""
+        conn = None
         try:
             # Attempt a simple operation to check if the connection is alive
             if cls._instance is None or (
@@ -38,15 +40,16 @@ class DuckDBSettings(ApiSettings):
                 conn = duckdb.connect(database=":memory:", read_only=False)
                 conn.execute("INSTALL spatial;")
                 conn.execute("LOAD spatial;")
-                return conn
         except (Exception, duckdb.Error) as e:
             # If there is an error, reconnect and load spatial again
             print(e)
             conn = duckdb.connect(database=":memory:", read_only=False)
             conn.execute("INSTALL spatial;")
             conn.execute("LOAD spatial;")
-            return conn
-        return v
+        if os.getenv("PARQUET_FILE_PATH", "").lower().startswith("s3://"):
+            conn.execute("INSTALL httpfs;")
+            conn.execute("LOAD httpfs;")
+        return conn
 
     @validator("relation", pre=True, always=True)
     def load_parquet_file(cls, v, values):
@@ -106,3 +109,4 @@ class DuckDBSettings(ApiSettings):
         """Close connection."""
         if self.conn:
             self.conn.close()
+
