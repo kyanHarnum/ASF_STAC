@@ -40,15 +40,29 @@ class DuckDBSettings(ApiSettings):
                 conn = duckdb.connect(database=":memory:", read_only=False)
                 conn.execute("INSTALL spatial;")
                 conn.execute("LOAD spatial;")
-        except (Exception, duckdb.Error) as e:
-            # If there is an error, reconnect and load spatial again
+
+                #looks for environment variable called parquet_file_path, return empty if false, then cheks if value is a s3 url
+                if os.getenv("PARQUET_FILE_PATH","").lower().startswith("s3://):
+                    #if starts with s3 and has env path we install and load httpfs
+                    conn.execute("INSTALL httpfs;")
+                    conn.execute("LOAD httpfs;")
+
+                    #searches for AWS credentials in yml
+                    conn.execute("""
+                        CREATE SECRET IF NOT EXISTS secretaws (
+                            TYPE s3, 
+                            PROVIDER CREDENTIAL_CHAIN
+                            );
+                        """) 
+        #instead of a duckdb exception lets just find any, basically if it fails we wipe and redo                                                                
+        except Exception as e:
             print(e)
+            #create a new duckdb connection, will be written
             conn = duckdb.connect(database=":memory:", read_only=False)
             conn.execute("INSTALL spatial;")
             conn.execute("LOAD spatial;")
-        if os.getenv("PARQUET_FILE_PATH", "").lower().startswith("s3://"):
             conn.execute("INSTALL httpfs;")
-            conn.execute("LOAD httpfs;")
+            conn.execute"LOAD httpfs;")
         return conn
 
     @validator("relation", pre=True, always=True)
@@ -76,7 +90,9 @@ class DuckDBSettings(ApiSettings):
         """
         if cls._instance is None or v is None:
             parquet_file_path = os.getenv("PARQUET_FILE_PATH", "")
-            if not os.path.exists(parquet_file_path):
+            
+            #changed because we already set the variable, just going to check if its true or false
+            if not parquet_file_path:
                 raise HTTPException(
                     status_code=404,
                     detail=f"Parquet file not found at path: {parquet_file_path}",
@@ -109,4 +125,5 @@ class DuckDBSettings(ApiSettings):
         """Close connection."""
         if self.conn:
             self.conn.close()
+
 
