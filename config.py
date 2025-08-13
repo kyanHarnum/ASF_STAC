@@ -92,7 +92,7 @@ class DuckDBSettings(ApiSettings):
             any other errors during file loading.
         """
         if cls._instance is None or v is None:
-            parquet_file_path = os.getenv("PARQUET_FILE_PATH", "")
+            parquet_file_path = os.getenv("PARQUET_FILE_PATH", "").strip()
             
             #changed because we already set the variable, just going to check if its true or false
             if not parquet_file_path:
@@ -141,6 +141,7 @@ class DuckDBSettings(ApiSettings):
         """Close connection."""
         if self.conn:
             self.conn.close()
+
 
 
 
