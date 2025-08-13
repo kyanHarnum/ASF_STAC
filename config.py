@@ -41,8 +41,11 @@ class DuckDBSettings(ApiSettings):
                 conn.execute("INSTALL spatial;")
                 conn.execute("LOAD spatial;")
 
+                #Sets pth variable to read what is set as PARQUET path in yml
+                pth = os.getenv("PARQUET_FILE_PATH","")
+                
                 #looks for environment variable called parquet_file_path, return empty if false, then cheks if value is a s3 url
-                if os.getenv("PARQUET_FILE_PATH","").lower().startswith("s3://):
+                if pth and pth.lower().startswith("s3://"):
                     #if starts with s3 and has env path we install and load httpfs
                     conn.execute("INSTALL httpfs;")
                     conn.execute("LOAD httpfs;")
@@ -62,7 +65,7 @@ class DuckDBSettings(ApiSettings):
             conn.execute("INSTALL spatial;")
             conn.execute("LOAD spatial;")
             conn.execute("INSTALL httpfs;")
-            conn.execute"LOAD httpfs;")
+            conn.execute("LOAD httpfs;")
         return conn
 
     @validator("relation", pre=True, always=True)
@@ -97,12 +100,25 @@ class DuckDBSettings(ApiSettings):
                     status_code=404,
                     detail=f"Parquet file not found at path: {parquet_file_path}",
                 )
+            #takes parquet file path variable, splits the string if theres commas into chunks, then iterate through those chunks... https://sqlpey.com/python/python-string-splitting-chunking-text/
+            paths = [p.strip() for chunk in parquet_file_path.split(",") for p in chunk.split() if p.strip()]
+            
             conn = values.get("conn")
             if conn is not None:
                 try:
                     table_name = "items"  # Set your desired table name here
                     # Drop existing table and create a new one from the Parquet file
                     conn.execute(f"DROP TABLE IF EXISTS {table_name};")
+
+                    #Unions the parquets, so we can use any amount as long as their seperated by a comma
+                    union = conn.read_parquet(paths, union_by_name=True)
+                    union.create(table_name)
+                    return conn.table(table_name)
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"FAILED TO LOAD PARQUET TO DUCKDB: {e}",)
+        return v
+
+                    
                     conn.execute(
                         f"CREATE TABLE {table_name} AS SELECT * FROM read_parquet('{parquet_file_path}');"
                     )
@@ -125,5 +141,6 @@ class DuckDBSettings(ApiSettings):
         """Close connection."""
         if self.conn:
             self.conn.close()
+
 
 
